@@ -1,0 +1,3 @@
+class AutoFactory {
+  const AutoFactory();
+}
