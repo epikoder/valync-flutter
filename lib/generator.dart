@@ -19,7 +19,9 @@ class ValyncGenerator extends GeneratorForAnnotation<AutoFactory> {
     final importPath =
         buildStep.inputId.uri.toString().replaceFirst('asset:', 'package:');
 
-    registerTypeFactory(className, importPath);
+    if (className != null) {
+      registerTypeFactory(className, importPath);
+    }
 
     return ''; // don't emit to per-file .g.dart
   }

@@ -1,39 +1,102 @@
-<!--
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# valync
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/tools/pub/writing-package-pages).
-
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/to/develop-packages).
--->
-
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
+A Flutter package for making typed HTTP requests with automatic JSON deserialization, built-in error handling, and optional auth token refresh.
 
 ## Features
 
-TODO: List what your package can do. Maybe include images, gifs, or videos.
+- Typed HTTP client — responses are deserialized directly into your Dart models
+- Structured API responses with `success`/`failed` status discrimination
+- `Result<T, ApiError>` return type (via `option_result`) — no uncaught exceptions
+- Auto-generated `JsonType` factories via the `@AutoFactory` annotation and `build_runner`
+- Optional `createClient` for shared headers, auth token injection, and automatic token refresh on 401
 
 ## Getting started
 
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+Add to your `pubspec.yaml`:
+
+```yaml
+dependencies:
+  valync: ^0.0.1
+
+dev_dependencies:
+  build_runner: any
+```
+
+Annotate your model with `@AutoFactory` and implement `JsonType<T>`:
+
+```dart
+import 'package:valync/valync.dart';
+
+@AutoFactory()
+class User implements JsonType<User> {
+  final String id;
+  final String name;
+
+  User({required this.id, required this.name});
+
+  @override
+  User fromJson(dynamic json) => User(
+        id: json['id'] as String,
+        name: json['name'] as String,
+      );
+}
+```
+
+Run the generator:
+
+```sh
+flutter pub run build_runner build
+```
 
 ## Usage
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
+### Simple one-off request
 
 ```dart
-const like = 'sample';
+final result = await valync<User>('https://api.example.com/users/1');
+
+result.match(
+  ok: (user) => print(user.name),
+  err: (error) => print('Error: $error'),
+);
+```
+
+### Client with shared config (auth headers + token refresh)
+
+```dart
+final client = createClient(
+  config: ValyncClientConfig(
+    getAuthHeaders: () => {'Authorization': 'Bearer $token'},
+    isUnauthorized: (error) => error.code.unwrapOr('') == '401',
+    onUnauthorized: () async => await refreshToken(),
+  ),
+);
+
+// GET
+final result = await client<User>('https://api.example.com/me');
+
+// POST
+final result = await client<User>(
+  'https://api.example.com/users',
+  method: HttpMethod.post,
+  body: {'name': 'Alice'},
+);
+```
+
+### Supported HTTP methods
+
+`HttpMethod.get`, `HttpMethod.post`, `HttpMethod.put`, `HttpMethod.patch`, `HttpMethod.delete`
+
+## API response contract
+
+The package expects responses in this shape:
+
+```json
+{ "status": "success", "data": { ... } }
+{ "status": "failed",  "error": { "name": "...", "message": "...", "code": "..." } }
 ```
 
 ## Additional information
 
-TODO: Tell users more about the package: where to find more information, how to
-contribute to the package, how to file issues, what response they can expect
-from the package authors, and more.
+- Issues and contributions: open a GitHub issue or pull request
+- Built on [`option_result`](https://pub.dev/packages/option_result), [`http`](https://pub.dev/packages/http), and [`source_gen`](https://pub.dev/packages/source_gen)

@@ -1,5 +1,3 @@
-library valync;
-
 export 'annotations.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -37,9 +35,9 @@ class ApiError {
   });
 
   factory ApiError.fromJson(Map<String, dynamic> json) => ApiError(
-        name: json["name"],
-        message: json["message"],
-        code: json["code"] != null ? Some(json["code"]) : const None(),
+        name: json["name"] as String,
+        message: json["message"] as String,
+        code: json["code"] != null ? Some(json["code"] as String) : const None(),
       );
 
   @override
@@ -65,14 +63,14 @@ class ApiResponse<T> {
     Map<String, dynamic> json,
     T Function(dynamic) fromJsonT,
   ) {
-    final status = ApiResponseStatus.fromString(json['status']);
+    final status = ApiResponseStatus.fromString(json['status'] as String);
     return ApiResponse(
       status: status,
       data: status == ApiResponseStatus.success
           ? Some(fromJsonT(json['data']))
           : const None(),
       error: status == ApiResponseStatus.failed
-          ? Some(ApiError.fromJson(json['error']))
+          ? Some(ApiError.fromJson(json['error'] as Map<String, dynamic>))
           : const None(),
     );
   }
@@ -263,7 +261,7 @@ Future<Result<T, ApiError>> _handleResponse<T>(
   JsonType<T> factory,
 ) async {
   if (res.statusCode >= 200 && res.statusCode < 300) {
-    final json = jsonDecode(res.body);
+    final json = jsonDecode(res.body) as Map<String, dynamic>;
     final response = ApiResponse.fromJson(json, factory.fromJson);
     return response.isData()
         ? Ok(response.data.unwrap())
