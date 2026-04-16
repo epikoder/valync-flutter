@@ -1,5 +1,8 @@
+// ignore_for_file: strict_raw_type
+
 export 'annotations.dart';
 import 'dart:convert';
+import 'dart:nativewrappers/_internal/vm/lib/ffi_allocation_patch.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:option_result/option_result.dart';
@@ -37,7 +40,8 @@ class ApiError {
   factory ApiError.fromJson(Map<String, dynamic> json) => ApiError(
         name: json["name"] as String,
         message: json["message"] as String,
-        code: json["code"] != null ? Some(json["code"] as String) : const None(),
+        code:
+            json["code"] != null ? Some(json["code"] as String) : const None(),
       );
 
   @override
@@ -78,7 +82,7 @@ class ApiResponse<T> {
 
 /// ----- Factory Registry (Generated) -----
 final Map<Type, JsonType> typeFactories = {}; // populated by generator
-registerFactory(Type t, JsonType jt) {
+void registerFactory(Type t, JsonType jt) {
   typeFactories[t] = jt;
 }
 
@@ -86,14 +90,14 @@ registerFactory(Type t, JsonType jt) {
 enum HttpMethod { get, post, put, patch, delete }
 
 class ValyncClientConfig {
-  final Future<void> Function()? onUnauthorized;
-  final bool Function(ApiError error)? isUnauthorized;
-  final Map<String, String> Function()? getAuthHeaders;
+  // final Future<void> Function()? onUnauthorized;
+  final Future<Result<T, ApiError>> Function<T>(
+      ApiError error, Future<Result<T, ApiError>> Function() retry)? onError;
+  final Map<String, String> Function()? headers;
 
   const ValyncClientConfig({
-    this.onUnauthorized,
-    this.isUnauthorized,
-    this.getAuthHeaders,
+    this.onError,
+    this.headers,
   });
 }
 
@@ -103,6 +107,7 @@ typedef ValyncClient = Future<Result<T, ApiError>> Function<T>(
   Map<String, dynamic>? body,
   Map<String, String>? headers,
 });
+
 ValyncClient createClient({
   Map<String, String>? headers,
   ValyncClientConfig config = const ValyncClientConfig(),
@@ -123,7 +128,7 @@ ValyncClient createClient({
     Future<Result<T, ApiError>> doRequest() async {
       final uri = Uri.parse(url);
       final defaultHeaders = {'Content-Type': 'application/json'};
-      final authHeaders = config.getAuthHeaders?.call() ?? {};
+      final authHeaders = config.headers?.call() ?? {};
       final mergedHeaders = {
         ...?configHeaders,
         ...defaultHeaders,
@@ -167,10 +172,17 @@ ValyncClient createClient({
             );
             break;
         }
-      } catch (e) {
+      } on http.ClientException catch (e) {
         return Err(ApiError(
           name: "Network Error",
           message: e.toString(),
+          code: const None(),
+        ));
+      } catch (e) {
+        Logger().e('Unknown error: $e');
+        return Err(ApiError(
+          name: "UnknownError",
+          message: "Something went wrong",
           code: const None(),
         ));
       }
@@ -181,15 +193,15 @@ ValyncClient createClient({
     // Initial call
     Result<T, ApiError> result = await doRequest();
 
-    // If unauthorized, attempt token refresh and retry once
-    if (result.isErr() &&
-        config.isUnauthorized?.call(result.unwrapErr()) == true &&
-        config.onUnauthorized != null) {
-      await config.onUnauthorized!();
-      result = await doRequest(); // Retry once after refresh
+    switch (result) {
+      case Ok(:final value):
+        return Ok(value);
+      case Err(:final error):
+        if (config.onError != null) {
+          return await config.onError!(error, doRequest);
+        }
+        return Err(error);
     }
-
-    return result;
   };
 }
 
@@ -260,16 +272,16 @@ Future<Result<T, ApiError>> _handleResponse<T>(
   http.Response res,
   JsonType<T> factory,
 ) async {
-  if (res.statusCode >= 200 && res.statusCode < 300) {
+  try {
     final json = jsonDecode(res.body) as Map<String, dynamic>;
     final response = ApiResponse.fromJson(json, factory.fromJson);
     return response.isData()
         ? Ok(response.data.unwrap())
         : Err(response.error.unwrap());
-  } else {
-    Logger().e('HTTP error: ${res.statusCode}, ${res.body}');
+  } catch (e) {
+    Logger().e('JSON parsing error: $e');
     return Err(ApiError(
-      name: "HTTP Error",
+      name: "UnknownError",
       message: "Unknown server error",
       code: Some(res.statusCode.toString()),
     ));
