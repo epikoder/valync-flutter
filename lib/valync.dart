@@ -90,9 +90,7 @@ void registerFactory(Type t, JsonType jt) {
 enum HttpMethod { get, post, put, patch, delete }
 
 class ValyncClientConfig {
-  // final Future<void> Function()? onUnauthorized;
-  final Future<Result<T, ApiError>> Function<T>(
-      ApiError error, Future<Result<T, ApiError>> Function() retry)? onError;
+  final Future<bool> Function(ApiError error)? onError;
   final Map<String, String> Function()? headers;
 
   const ValyncClientConfig({
@@ -198,7 +196,12 @@ ValyncClient createClient({
         return Ok(value);
       case Err(:final error):
         if (config.onError != null) {
-          return await config.onError!(error, doRequest);
+          final retry = await config.onError!(error);
+          if (retry) {
+            return await doRequest();
+          }
+
+          return Err(error);
         }
         return Err(error);
     }
