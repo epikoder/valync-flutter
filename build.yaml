@@ -4,7 +4,7 @@ builders:
     builder_factories: ["valyncGenerator"]
     build_extensions: { ".dart": [".g.dart"] }
     auto_apply: dependents
-    build_to: source # ✅ MUST be source to generate .g.dart into lib/
+    build_to: source #  MUST be source to generate .g.dart into lib/
     applies_builders: ["valync|type_factory_combiner"]
 
   type_factory_combiner:
@@ -12,5 +12,5 @@ builders:
     builder_factories: ["typeFactoryCombiner"]
     build_extensions: { "\\$lib\\$": ["type_factories.dart"] }
     auto_apply: dependents
-    build_to: source # ✅ source so you can import the result!
+    build_to: source #  source so you can import the result!
     applies_builders: ["source_gen|combining_builder"]
