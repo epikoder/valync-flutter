@@ -2,7 +2,6 @@
 
 export 'annotations.dart';
 import 'dart:convert';
-import 'dart:nativewrappers/_internal/vm/lib/ffi_allocation_patch.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:option_result/option_result.dart';
