@@ -10,7 +10,7 @@ String generateTypeFactoryFile() {
   if (_typeFactoryEntries.isEmpty) return '';
 
   final buffer = StringBuffer();
-  buffer.writeln('// GENERATED CODE - DO NOT MODIFY BY HAND');
+  buffer.writeln('// GENERATED CODE - DO NOT MODIFY');
   buffer.writeln('import \'package:valync/valync.dart\';');
 
   for (final import in _typeFactoryImports) {
