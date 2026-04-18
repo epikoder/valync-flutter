@@ -103,6 +103,7 @@ typedef ValyncClient = Future<Result<T, ApiError>> Function<T>(
   HttpMethod method,
   Map<String, dynamic>? body,
   Map<String, String>? headers,
+  List<http.MultipartFile>? files,
 });
 
 ValyncClient createClient({
@@ -116,6 +117,7 @@ ValyncClient createClient({
     HttpMethod method = HttpMethod.get,
     Map<String, dynamic>? body,
     Map<String, String>? headers,
+    List<http.MultipartFile>? files,
   }) async {
     final factory = typeFactories[T];
     if (factory == null) {
@@ -124,7 +126,9 @@ ValyncClient createClient({
 
     Future<Result<T, ApiError>> doRequest() async {
       final uri = Uri.parse(url);
-      final defaultHeaders = {'Content-Type': 'application/json'};
+      final isMultipart = files != null && files.isNotEmpty;
+      final defaultHeaders =
+          isMultipart ? <String, String>{} : {'Content-Type': 'application/json'};
       final authHeaders = config.headers?.call() ?? {};
       final mergedHeaders = {
         ...?configHeaders,
@@ -136,39 +140,7 @@ ValyncClient createClient({
       late http.Response response;
 
       try {
-        switch (method) {
-          case HttpMethod.get:
-            response = await http.get(uri, headers: mergedHeaders);
-            break;
-          case HttpMethod.post:
-            response = await http.post(
-              uri,
-              headers: mergedHeaders,
-              body: jsonEncode(body ?? {}),
-            );
-            break;
-          case HttpMethod.put:
-            response = await http.put(
-              uri,
-              headers: mergedHeaders,
-              body: jsonEncode(body ?? {}),
-            );
-            break;
-          case HttpMethod.patch:
-            response = await http.patch(
-              uri,
-              headers: mergedHeaders,
-              body: jsonEncode(body ?? {}),
-            );
-            break;
-          case HttpMethod.delete:
-            response = await http.delete(
-              uri,
-              headers: mergedHeaders,
-              body: jsonEncode(body ?? {}),
-            );
-            break;
-        }
+        response = await _sendRequest(uri, method, mergedHeaders, body, files);
       } on http.ClientException catch (e) {
         return Err(ApiError(
           name: "Network Error",
@@ -213,6 +185,7 @@ Future<Result<T, ApiError>> valync<T>(
   HttpMethod method = HttpMethod.get,
   Map<String, dynamic>? body,
   Map<String, String>? headers,
+  List<http.MultipartFile>? files,
 }) async {
   final factory = typeFactories[T];
   if (factory == null) {
@@ -220,45 +193,15 @@ Future<Result<T, ApiError>> valync<T>(
   }
 
   final uri = Uri.parse(url);
-  final defaultHeaders = {'Content-Type': 'application/json'};
+  final isMultipart = files != null && files.isNotEmpty;
+  final defaultHeaders =
+      isMultipart ? <String, String>{} : {'Content-Type': 'application/json'};
   final mergedHeaders = {...defaultHeaders, ...?headers};
 
   late http.Response response;
 
   try {
-    switch (method) {
-      case HttpMethod.get:
-        response = await http.get(uri, headers: mergedHeaders);
-        break;
-      case HttpMethod.post:
-        response = await http.post(
-          uri,
-          headers: mergedHeaders,
-          body: jsonEncode(body ?? {}),
-        );
-        break;
-      case HttpMethod.put:
-        response = await http.put(
-          uri,
-          headers: mergedHeaders,
-          body: jsonEncode(body ?? {}),
-        );
-        break;
-      case HttpMethod.patch:
-        response = await http.patch(
-          uri,
-          headers: mergedHeaders,
-          body: jsonEncode(body ?? {}),
-        );
-        break;
-      case HttpMethod.delete:
-        response = await http.delete(
-          uri,
-          headers: mergedHeaders,
-          body: jsonEncode(body ?? {}),
-        );
-        break;
-    }
+    response = await _sendRequest(uri, method, mergedHeaders, body, files);
   } catch (e) {
     return Err(ApiError(
       name: "Network Error",
@@ -268,6 +211,37 @@ Future<Result<T, ApiError>> valync<T>(
   }
 
   return _handleResponse<T>(response, factory as JsonType<T>);
+}
+
+Future<http.Response> _sendRequest(
+  Uri uri,
+  HttpMethod method,
+  Map<String, String> headers,
+  Map<String, dynamic>? body,
+  List<http.MultipartFile>? files,
+) async {
+  if (files != null && files.isNotEmpty) {
+    final request = http.MultipartRequest(method.name.toUpperCase(), uri)
+      ..headers.addAll(headers)
+      ..files.addAll(files);
+    if (body != null) {
+      body.forEach((key, value) => request.fields[key] = value.toString());
+    }
+    return http.Response.fromStream(await request.send());
+  }
+
+  switch (method) {
+    case HttpMethod.get:
+      return http.get(uri, headers: headers);
+    case HttpMethod.post:
+      return http.post(uri, headers: headers, body: jsonEncode(body ?? {}));
+    case HttpMethod.put:
+      return http.put(uri, headers: headers, body: jsonEncode(body ?? {}));
+    case HttpMethod.patch:
+      return http.patch(uri, headers: headers, body: jsonEncode(body ?? {}));
+    case HttpMethod.delete:
+      return http.delete(uri, headers: headers, body: jsonEncode(body ?? {}));
+  }
 }
 
 Future<Result<T, ApiError>> _handleResponse<T>(
