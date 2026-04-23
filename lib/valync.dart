@@ -127,8 +127,9 @@ ValyncClient createClient({
     Future<Result<T, ApiError>> doRequest() async {
       final uri = Uri.parse(url);
       final isMultipart = files != null && files.isNotEmpty;
-      final defaultHeaders =
-          isMultipart ? <String, String>{} : {'Content-Type': 'application/json'};
+      final defaultHeaders = isMultipart
+          ? <String, String>{}
+          : {'Content-Type': 'application/json'};
       final authHeaders = config.headers?.call() ?? {};
       final mergedHeaders = {
         ...?configHeaders,
@@ -141,16 +142,17 @@ ValyncClient createClient({
 
       try {
         response = await _sendRequest(uri, method, mergedHeaders, body, files);
-      } on http.ClientException catch (e) {
+      } on http.ClientException catch (e, stackTrace) {
+        Logger(level: Level.error).e(e, stackTrace: stackTrace);
         return Err(ApiError(
-          name: "Network Error",
-          message: e.toString(),
+          name: "ServerUnreacheable",
+          message: "Server unreacheable",
           code: const None(),
         ));
-      } catch (e) {
-        Logger().e('Unknown error: $e');
+      } catch (e, stackTrace) {
+        Logger(level: Level.error).e(e, stackTrace: stackTrace);
         return Err(ApiError(
-          name: "UnknownError",
+          name: "InternalServerError",
           message: "Something went wrong",
           code: const None(),
         ));
@@ -202,10 +204,18 @@ Future<Result<T, ApiError>> valync<T>(
 
   try {
     response = await _sendRequest(uri, method, mergedHeaders, body, files);
-  } catch (e) {
+  } on http.ClientException catch (e, stackTrace) {
+    Logger(level: Level.error).e(e, stackTrace: stackTrace);
     return Err(ApiError(
-      name: "Network Error",
-      message: e.toString(),
+      name: "ServerUnreacheable",
+      message: "Server unreacheable",
+      code: const None(),
+    ));
+  } catch (e, stackTrace) {
+    Logger(level: Level.error).e(e, stackTrace: stackTrace);
+    return Err(ApiError(
+      name: "InternalServerError",
+      message: "Something went wrong",
       code: const None(),
     ));
   }
