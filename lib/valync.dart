@@ -258,6 +258,10 @@ Future<Result<T, ApiError>> _handleResponse<T>(
   http.Response res,
   JsonType<T> factory,
 ) async {
+  if (res.statusCode == 204) {
+    return Ok(factory.fromJson(<Map<String, dynamic>>{}));
+  }
+
   try {
     final json = jsonDecode(res.body) as Map<String, dynamic>;
     final response = ApiResponse.fromJson(json, factory.fromJson);
