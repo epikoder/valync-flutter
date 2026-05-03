@@ -1,6 +1,6 @@
 name: valync
-description: "Flutter HTTP client with typed Result<T, ApiError> responses, structured success/failure discrimination, automatic JSON deserialization via @AutoFactory annotation, and built-in token refresh support."
-version: 0.1.1
+description: "Flutter HTTP client with typed Result pattern"
+version: 0.1.2
 homepage: https://github.com/epikoder/valync-flutter
 
 environment:
@@ -21,3 +21,11 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 flutter:
+
+platforms:
+  android:
+  ios:
+  linux:
+  macos:
+  web:
+  windows:

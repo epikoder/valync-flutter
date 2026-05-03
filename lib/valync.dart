@@ -1,33 +1,61 @@
 // ignore_for_file: strict_raw_type
 
 export 'annotations.dart';
+export 'generic.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:option_result/option_result.dart';
+import 'generic.dart';
 
-/// ----- Base Contract -----
+/// Base interface for JSON deserialization factories.
+///
+/// Implement this on every model class you want to deserialize from an API
+/// response. The [fromJson] method receives the raw `data` value from the
+/// response body.
+///
+/// ```dart
+/// class User implements JsonType<User> {
+///   final String id;
+///   User({required this.id});
+///
+///   @override
+///   User fromJson(dynamic json) => User(id: json['id'] as String);
+/// }
+/// ```
 abstract class JsonType<T> {
   T fromJson(dynamic json);
 }
 
-/// ----- Status Enum -----
+/// Discriminates between a successful and a failed API response.
 enum ApiResponseStatus {
   success,
   failed;
 
+  /// Parses a status string from the response body (`"success"` or `"failed"`).
   static ApiResponseStatus fromString(String source) =>
       source.toLowerCase() == 'success'
           ? ApiResponseStatus.success
           : ApiResponseStatus.failed;
 
+  /// Returns the lowercase string representation of the status.
   String get string => name.toLowerCase();
 }
 
-/// ----- Error Class -----
+/// Represents a structured error returned by the API.
+///
+/// The API is expected to return errors in this shape:
+/// ```json
+/// { "name": "NotFound", "message": "User not found", "code": "404" }
+/// ```
 class ApiError {
+  /// A short machine-readable error identifier (e.g. `"NotFound"`).
   final String name;
+
+  /// A human-readable description of the error.
   final String message;
+
+  /// An optional error code (e.g. HTTP status or domain-specific code).
   final Option<String> code;
 
   ApiError({
@@ -47,10 +75,17 @@ class ApiError {
   String toString() => "$name: $message";
 }
 
-/// ----- Generic API Response -----
+/// Wraps a parsed API response, carrying either the deserialized [data] or
+/// an [error] depending on [status].
 class ApiResponse<T> {
   final ApiResponseStatus status;
+
+  /// The deserialized response payload. Present only when [status] is
+  /// [ApiResponseStatus.success].
   final Option<T> data;
+
+  /// The structured error. Present only when [status] is
+  /// [ApiResponseStatus.failed].
   final Option<ApiError> error;
 
   ApiResponse({
@@ -59,7 +94,10 @@ class ApiResponse<T> {
     required this.error,
   });
 
+  /// Returns `true` when the response carries a successful payload.
   bool isData() => status == ApiResponseStatus.success;
+
+  /// Returns `true` when the response carries an error.
   bool isError() => status == ApiResponseStatus.failed;
 
   factory ApiResponse.fromJson(
@@ -79,17 +117,54 @@ class ApiResponse<T> {
   }
 }
 
-/// ----- Factory Registry (Generated) -----
-final Map<Type, JsonType> typeFactories = {}; // populated by generator
+/// Global registry mapping [Type] to its [JsonType] factory.
+///
+/// Pre-populated with the built-in generic response types ([EmptyResponse],
+/// [ListResponse], [JsonObjectResponse]). Extended by calling
+/// `registerAllFactories()` from the generated `lib/type_factories.dart`, or
+/// manually via [registerFactory].
+final Map<Type, JsonType> typeFactories = {
+  EmptyResponse: EmptyResponse(),
+  ListResponse: ListResponse(),
+  JsonObjectResponse: JsonObjectResponse(),
+};
+
+/// Manually registers a [JsonType] factory for [t].
+///
+/// Use this when you prefer not to rely on code generation:
+/// ```dart
+/// registerFactory(User, User());
+/// ```
 void registerFactory(Type t, JsonType jt) {
   typeFactories[t] = jt;
 }
 
-/// ----- HTTP Client Methods -----
+/// Supported HTTP methods.
 enum HttpMethod { get, post, put, patch, delete }
 
+/// Configuration for a [ValyncClient] created with [createClient].
 class ValyncClientConfig {
+  /// Called when a request returns an [ApiError]. Return `true` to retry the
+  /// request once, `false` to propagate the error.
+  ///
+  /// Typical use: refresh an auth token on a 401 and retry.
+  /// ```dart
+  /// onError: (error) async {
+  ///   if (error.code.unwrapOr('') == '401') {
+  ///     await refreshToken();
+  ///     return true;
+  ///   }
+  ///   return false;
+  /// }
+  /// ```
   final Future<bool> Function(ApiError error)? onError;
+
+  /// Returns headers that are merged into every request — evaluated lazily so
+  /// the latest token value is always used.
+  ///
+  /// ```dart
+  /// headers: () => {'Authorization': 'Bearer $token'},
+  /// ```
   final Map<String, String> Function()? headers;
 
   const ValyncClientConfig({
@@ -98,6 +173,13 @@ class ValyncClientConfig {
   });
 }
 
+/// A callable client function returned by [createClient].
+///
+/// Call it like a function, supplying the type parameter of the expected
+/// response model:
+/// ```dart
+/// final result = await client<User>('https://api.example.com/me');
+/// ```
 typedef ValyncClient = Future<Result<T, ApiError>> Function<T>(
   String url, {
   HttpMethod method,
@@ -106,6 +188,31 @@ typedef ValyncClient = Future<Result<T, ApiError>> Function<T>(
   List<http.MultipartFile>? files,
 });
 
+/// Creates a stateful [ValyncClient] with shared [headers] and [config].
+///
+/// The returned client merges headers in this order (later entries win):
+/// 1. [headers] passed to [createClient]
+/// 2. Default `Content-Type: application/json` (omitted for multipart)
+/// 3. Headers from [ValyncClientConfig.headers]
+/// 4. Per-request [headers]
+///
+/// ```dart
+/// final client = createClient(
+///   headers: {'X-App-Version': '1.0.0'},
+///   config: ValyncClientConfig(
+///     headers: () => {'Authorization': 'Bearer $token'},
+///     onError: (error) async {
+///       if (error.code.unwrapOr('') == '401') {
+///         await refreshToken();
+///         return true;
+///       }
+///       return false;
+///     },
+///   ),
+/// );
+///
+/// final result = await client<User>('https://api.example.com/me');
+/// ```
 ValyncClient createClient({
   Map<String, String>? headers,
   ValyncClientConfig config = const ValyncClientConfig(),
@@ -161,7 +268,6 @@ ValyncClient createClient({
       return _handleResponse<T>(response, factory as JsonType<T>);
     }
 
-    // Initial call
     Result<T, ApiError> result = await doRequest();
 
     switch (result) {
@@ -181,7 +287,23 @@ ValyncClient createClient({
   };
 }
 
-/// ----- Generic HTTP Client -----
+/// Makes a single typed HTTP request without a shared client.
+///
+/// Requires the target type [T] to be registered in [typeFactories] (either
+/// via `registerAllFactories()` or [registerFactory]).
+///
+/// Returns `Ok<T>` on success or `Err<ApiError>` on failure — never throws.
+///
+/// ```dart
+/// final result = await valync<User>('https://api.example.com/users/1');
+///
+/// switch (result) {
+///   case Ok(:final value):
+///     print(value.name);
+///   case Err(:final error):
+///     print('${error.name}: ${error.message}');
+/// }
+/// ```
 Future<Result<T, ApiError>> valync<T>(
   String url, {
   HttpMethod method = HttpMethod.get,

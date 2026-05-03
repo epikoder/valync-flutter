@@ -8,6 +8,7 @@ A Flutter package for making typed HTTP requests with automatic JSON deserializa
 - `Result<T, ApiError>` return type (via `option_result`) — no uncaught exceptions
 - Structured API responses with `success`/`failed` status discrimination
 - Multipart file upload support
+- Built-in generic response types: `EmptyResponse`, `ListResponse`, `JsonObjectResponse`
 - Auto-generated factory registry via the `@AutoFactory` annotation and `build_runner`
 - Optional `createClient` for shared headers and automatic retry on error
 
@@ -17,7 +18,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  valync: ^0.1.0
+  valync: ^0.1.2
 
 dev_dependencies:
   build_runner: any
@@ -31,7 +32,6 @@ Implement `JsonType<T>` and annotate with `@AutoFactory`:
 
 ```dart
 import 'package:valync/valync.dart';
-import 'package:valync/annotations.dart';
 
 @AutoFactory()
 class User implements JsonType<User> {
@@ -69,6 +69,9 @@ void main() {
 }
 ```
 
+> Built-in types (`EmptyResponse`, `ListResponse`, `JsonObjectResponse`) are
+> pre-registered automatically — no annotation or setup needed.
+
 ## Usage
 
 ### One-off request
@@ -76,10 +79,12 @@ void main() {
 ```dart
 final result = await valync<User>('https://api.example.com/users/1');
 
-result.match(
-  ok: (user) => print(user.name),
-  err: (error) => print('${error.name}: ${error.message}'),
-);
+switch (result) {
+  case Ok(:final value):
+    print(value.name);
+  case Err(:final error):
+    print('${error.name}: ${error.message}');
+}
 ```
 
 ### Client with shared config
@@ -92,7 +97,7 @@ final client = createClient(
     onError: (error) async {
       if (error.code.unwrapOr('') == '401') {
         await refreshToken();
-        return true; // true = retry the request
+        return true; // true = retry the request once
       }
       return false;
     },
@@ -110,12 +115,61 @@ final result = await client<User>(
 );
 
 // POST with multipart files
-final result = await client<UploadResponse>(
-  'https://api.example.com/upload',
+final result = await client<User>(
+  'https://api.example.com/avatar',
   method: HttpMethod.post,
-  body: {'description': 'profile photo'},
   files: [await http.MultipartFile.fromPath('avatar', '/path/to/file.jpg')],
 );
+```
+
+### List responses
+
+Use `ListResponse` when the API returns an array as `data`:
+
+```dart
+final result = await client<ListResponse>('https://api.example.com/users');
+
+switch (result) {
+  case Ok(:final value):
+    final users = value.apply((e) => User().fromJson(e));
+    print(users.map((u) => u.name).join(', '));
+  case Err(:final error):
+    print(error);
+}
+```
+
+### No-body responses
+
+Use `EmptyResponse` for endpoints that return `204 No Content` or a bare success:
+
+```dart
+final result = await client<EmptyResponse>(
+  'https://api.example.com/logout',
+  method: HttpMethod.post,
+);
+
+switch (result) {
+  case Ok():
+    print('logged out');
+  case Err(:final error):
+    print(error);
+}
+```
+
+### Raw JSON object
+
+Use `JsonObjectResponse` when you need to map `data` yourself:
+
+```dart
+final result = await client<JsonObjectResponse>('https://api.example.com/config');
+
+switch (result) {
+  case Ok(:final value):
+    final config = value.apply((e) => AppConfig.fromJson(e));
+    print(config.featureFlags);
+  case Err(:final error):
+    print(error);
+}
 ```
 
 ### Supported HTTP methods
@@ -140,7 +194,7 @@ Future<Result<T, ApiError>> valync<T>(
 
 ### `createClient({headers, config})`
 
-Returns a `ValyncClient` function with shared configuration.
+Returns a `ValyncClient` with shared configuration.
 
 ```dart
 ValyncClient createClient({
@@ -153,25 +207,33 @@ ValyncClient createClient({
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `headers` | `Map<String, String> Function()?` | Dynamic headers added to every request (e.g. auth tokens) |
+| `headers` | `Map<String, String> Function()?` | Dynamic headers merged into every request (e.g. auth tokens) |
 | `onError` | `Future<bool> Function(ApiError)?` | Called on error — return `true` to retry the request once |
 
 ### `ApiError`
 
-| Field | Type |
-|-------|------|
-| `name` | `String` |
-| `message` | `String` |
-| `code` | `Option<String>` |
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `String` | Machine-readable error identifier |
+| `message` | `String` | Human-readable description |
+| `code` | `Option<String>` | Optional error code |
 
 Built-in error names: `ServerUnreacheable`, `InternalServerError`, `UnknownError`.
+
+### Built-in response types
+
+| Type | Use when `data` is |
+|------|--------------------|
+| `EmptyResponse` | absent or irrelevant (e.g. 204) |
+| `ListResponse` | a JSON array — use `.apply((e) => T.fromJson(e))` to map |
+| `JsonObjectResponse` | an arbitrary value — use `.apply((e) => T.fromJson(e))` to map |
 
 ### `registerFactory(Type, JsonType)`
 
 Register a factory manually without code generation:
 
 ```dart
-registerFactory(User, User());
+registerFactory(User, User(id: '', name: ''));
 ```
 
 ## API response contract
@@ -184,6 +246,12 @@ The package expects responses in this shape:
 ```
 
 `204 No Content` responses are treated as success with no data.
+
+## Example
+
+A runnable Flutter example app is available in [`examples/basic`](examples/basic).
+It demonstrates one-off requests, list responses, empty responses, error handling,
+and `createClient` — all using a mock HTTP client, no server required.
 
 ## Additional information
 
