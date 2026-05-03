@@ -13,11 +13,11 @@ dependencies:
   http: ^1.6.0
   logger: ^2.6.0
   option_result: ^3.3.0
+  source_gen: ^4.2.0
+  build: ^4.0.4
+  analyzer: ^10.0.1
 
 dev_dependencies:
-  analyzer: ^10.0.1
-  build: ^4.0.4
-  source_gen: ^4.2.0
   flutter_lints: ^6.0.0
 
 flutter:
