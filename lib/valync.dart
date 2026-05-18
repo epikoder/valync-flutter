@@ -186,6 +186,7 @@ typedef ValyncClient = Future<Result<T, ApiError>> Function<T>(
   Map<String, dynamic>? body,
   Map<String, String>? headers,
   List<http.MultipartFile>? files,
+  bool multipart,
 });
 
 /// Creates a stateful [ValyncClient] with shared [headers] and [config].
@@ -225,6 +226,7 @@ ValyncClient createClient({
     Map<String, dynamic>? body,
     Map<String, String>? headers,
     List<http.MultipartFile>? files,
+    bool multipart = false,
   }) async {
     final factory = typeFactories[T];
     if (factory == null) {
@@ -233,7 +235,7 @@ ValyncClient createClient({
 
     Future<Result<T, ApiError>> doRequest() async {
       final uri = Uri.parse(url);
-      final isMultipart = files != null && files.isNotEmpty;
+      final isMultipart = (files != null && files.isNotEmpty) || multipart;
       final defaultHeaders = isMultipart
           ? <String, String>{}
           : {'Content-Type': 'application/json'};
@@ -248,7 +250,8 @@ ValyncClient createClient({
       late http.Response response;
 
       try {
-        response = await _sendRequest(uri, method, mergedHeaders, body, files);
+        response = await _sendRequest(uri, method, mergedHeaders, body, files,
+            multipart: multipart);
       } on http.ClientException catch (e, stackTrace) {
         Logger(level: Level.error).e(e, stackTrace: stackTrace);
         return Err(ApiError(
@@ -310,6 +313,7 @@ Future<Result<T, ApiError>> valync<T>(
   Map<String, dynamic>? body,
   Map<String, String>? headers,
   List<http.MultipartFile>? files,
+  bool multipart = false,
 }) async {
   final factory = typeFactories[T];
   if (factory == null) {
@@ -325,7 +329,8 @@ Future<Result<T, ApiError>> valync<T>(
   late http.Response response;
 
   try {
-    response = await _sendRequest(uri, method, mergedHeaders, body, files);
+    response = await _sendRequest(uri, method, mergedHeaders, body, files,
+        multipart: multipart);
   } on http.ClientException catch (e, stackTrace) {
     Logger(level: Level.error).e(e, stackTrace: stackTrace);
     return Err(ApiError(
@@ -350,12 +355,15 @@ Future<http.Response> _sendRequest(
   HttpMethod method,
   Map<String, String> headers,
   Map<String, dynamic>? body,
-  List<http.MultipartFile>? files,
-) async {
-  if (files != null && files.isNotEmpty) {
+  List<http.MultipartFile>? files, {
+  bool multipart = false,
+}) async {
+  if ((files != null && files.isNotEmpty) || multipart) {
     final request = http.MultipartRequest(method.name.toUpperCase(), uri)
-      ..headers.addAll(headers)
-      ..files.addAll(files);
+      ..headers.addAll(headers);
+    if (files != null && files.isNotEmpty) {
+      request.files.addAll(files);
+    }
     if (body != null) {
       body.forEach((key, value) => request.fields[key] = value.toString());
     }

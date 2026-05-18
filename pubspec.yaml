@@ -1,6 +1,6 @@
 name: valync
 description: "Flutter HTTP client with typed Result pattern"
-version: 0.1.3
+version: 0.1.4
 homepage: https://github.com/epikoder/valync-flutter
 
 environment:
