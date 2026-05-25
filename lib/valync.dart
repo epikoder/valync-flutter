@@ -2,11 +2,15 @@
 
 export 'annotations.dart';
 export 'generic.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:option_result/option_result.dart';
 import 'generic.dart';
+
+/// Default request timeout in milliseconds, applied when none is specified.
+const int kDefaultTimeoutMs = 5000;
 
 /// Base interface for JSON deserialization factories.
 ///
@@ -187,6 +191,7 @@ typedef ValyncClient = Future<Result<T, ApiError>> Function<T>(
   Map<String, String>? headers,
   List<http.MultipartFile>? files,
   bool multipart,
+  int? timeoutMs,
 });
 
 /// Creates a stateful [ValyncClient] with shared [headers] and [config].
@@ -217,8 +222,10 @@ typedef ValyncClient = Future<Result<T, ApiError>> Function<T>(
 ValyncClient createClient({
   Map<String, String>? headers,
   ValyncClientConfig config = const ValyncClientConfig(),
+  int timeoutMs = kDefaultTimeoutMs,
 }) {
   final configHeaders = headers;
+  final defaultTimeoutMs = timeoutMs;
 
   return <T>(
     String url, {
@@ -227,11 +234,15 @@ ValyncClient createClient({
     Map<String, String>? headers,
     List<http.MultipartFile>? files,
     bool multipart = false,
+    int? timeoutMs,
   }) async {
     final factory = typeFactories[T];
     if (factory == null) {
       throw Exception('Missing factory for type $T');
     }
+
+    final effectiveTimeout =
+        Duration(milliseconds: timeoutMs ?? defaultTimeoutMs);
 
     Future<Result<T, ApiError>> doRequest() async {
       final uri = Uri.parse(url);
@@ -251,7 +262,14 @@ ValyncClient createClient({
 
       try {
         response = await _sendRequest(uri, method, mergedHeaders, body, files,
-            multipart: multipart);
+            multipart: multipart, timeout: effectiveTimeout);
+      } on TimeoutException catch (e, stackTrace) {
+        Logger(level: Level.error).e(e, stackTrace: stackTrace);
+        return Err(ApiError(
+          name: "RequestTimeout",
+          message: "Request timed out",
+          code: const None(),
+        ));
       } on http.ClientException catch (e, stackTrace) {
         Logger(level: Level.error).e(e, stackTrace: stackTrace);
         return Err(ApiError(
@@ -314,6 +332,7 @@ Future<Result<T, ApiError>> valync<T>(
   Map<String, String>? headers,
   List<http.MultipartFile>? files,
   bool multipart = false,
+  int timeoutMs = kDefaultTimeoutMs,
 }) async {
   final factory = typeFactories[T];
   if (factory == null) {
@@ -330,7 +349,14 @@ Future<Result<T, ApiError>> valync<T>(
 
   try {
     response = await _sendRequest(uri, method, mergedHeaders, body, files,
-        multipart: multipart);
+        multipart: multipart, timeout: Duration(milliseconds: timeoutMs));
+  } on TimeoutException catch (e, stackTrace) {
+    Logger(level: Level.error).e(e, stackTrace: stackTrace);
+    return Err(ApiError(
+      name: "RequestTimeout",
+      message: "Request timed out",
+      code: const None(),
+    ));
   } on http.ClientException catch (e, stackTrace) {
     Logger(level: Level.error).e(e, stackTrace: stackTrace);
     return Err(ApiError(
@@ -357,6 +383,7 @@ Future<http.Response> _sendRequest(
   Map<String, dynamic>? body,
   List<http.MultipartFile>? files, {
   bool multipart = false,
+  required Duration timeout,
 }) async {
   if ((files != null && files.isNotEmpty) || multipart) {
     final request = http.MultipartRequest(method.name.toUpperCase(), uri)
@@ -367,20 +394,28 @@ Future<http.Response> _sendRequest(
     if (body != null) {
       body.forEach((key, value) => request.fields[key] = value.toString());
     }
-    return http.Response.fromStream(await request.send());
+    return http.Response.fromStream(await request.send().timeout(timeout));
   }
 
   switch (method) {
     case HttpMethod.get:
-      return http.get(uri, headers: headers);
+      return http.get(uri, headers: headers).timeout(timeout);
     case HttpMethod.post:
-      return http.post(uri, headers: headers, body: jsonEncode(body ?? {}));
+      return http
+          .post(uri, headers: headers, body: jsonEncode(body ?? {}))
+          .timeout(timeout);
     case HttpMethod.put:
-      return http.put(uri, headers: headers, body: jsonEncode(body ?? {}));
+      return http
+          .put(uri, headers: headers, body: jsonEncode(body ?? {}))
+          .timeout(timeout);
     case HttpMethod.patch:
-      return http.patch(uri, headers: headers, body: jsonEncode(body ?? {}));
+      return http
+          .patch(uri, headers: headers, body: jsonEncode(body ?? {}))
+          .timeout(timeout);
     case HttpMethod.delete:
-      return http.delete(uri, headers: headers, body: jsonEncode(body ?? {}));
+      return http
+          .delete(uri, headers: headers, body: jsonEncode(body ?? {}))
+          .timeout(timeout);
   }
 }
 
