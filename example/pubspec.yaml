@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   valync:
-    path: ../..
+    path: ..
   http: ^1.6.0
   option_result: ^3.3.0
 

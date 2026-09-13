@@ -249,7 +249,7 @@ The package expects responses in this shape:
 
 ## Example
 
-A runnable Flutter example app is available in [`examples/basic`](examples/basic).
+A runnable Flutter example app is available in [`example`](example).
 It demonstrates one-off requests, list responses, empty responses, error handling,
 and `createClient` — all using a mock HTTP client, no server required.
 

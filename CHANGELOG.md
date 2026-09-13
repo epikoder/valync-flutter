@@ -1,5 +1,6 @@
 ## 0.1.6
 
+- Fix the example app, which pointed at the wrong package path
 - Allow analyzer up to 14.x, so apps can use current `riverpod_generator`, `json_serializable`, `build_runner` and `source_gen`, which all require analyzer 13 or later
 
 ## 0.1.2
